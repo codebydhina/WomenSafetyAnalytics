@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShesSafe — Women Safety Analytics</title>
+
+<!-- Leaflet (map) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Chart.js (analytics charts) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --bg:            #0f0e17;
+    --bg-panel:      #17151f;
+    --bg-panel-2:    #1e1b29;
+    --border:        #2a2636;
+    --text:          #f2f0f7;
+    --text-dim:      #9c97ad;
+    --accent:        #ff5d7a;      /* rose — safety / alert */
+    --accent-dim:    #ff5d7a33;
+    --safe:          #35d0a3;      /* teal — safe */
+    --moderate:      #f5b942;      /* amber — moderate */
+    --risk:          #ff5d7a;      /* rose — risk */
+    --violet:        #8b7cf6;      /* secondary accent */
+    --radius:        16px;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+
+  body{
+    background:
+      radial-gradient(circle at 15% 0%, #241f38 0%, transparent 45%),
+      radial-gradient(circle at 90% 10%, #2a1a2c 0%, transparent 40%),
+      var(--bg);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    min-height:100vh;
+    padding-bottom:60px;
+  }
+
+  h1,h2,h3, .display{ font-family:'Space Grotesk', sans-serif; }
+
+  /* ---------- Header ---------- */
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:22px 40px;
+    border-bottom:1px solid var(--border);
+    position:sticky; top:0; z-index:50;
+    background:rgba(15,14,23,0.85);
+    backdrop-filter: blur(10px);
+  }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-mark{
+    width:38px; height:38px; border-radius:10px;
+    background:linear-gradient(135deg, var(--accent), var(--violet));
+    display:flex; align-items:center; justify-content:center;
+    font-weight:700; font-family:'Space Grotesk';
+    box-shadow:0 0 24px var(--accent-dim);
+  }
+  .brand-name{ font-size:20px; font-weight:700; letter-spacing:-0.3px; }
+  .brand-tag{ font-size:12px; color:var(--text-dim); margin-top:-2px; }
+
+  nav{ display:flex; gap:6px; background:var(--bg-panel); padding:5px; border-radius:12px; border:1px solid var(--border); }
+  nav button{
+    background:transparent; border:none; color:var(--text-dim);
+    padding:9px 18px; border-radius:9px; font-family:'Inter'; font-weight:600; font-size:14px;
+    cursor:pointer; transition:.2s;
+  }
+  nav button.active{ background:var(--bg-panel-2); color:var(--text); }
+  nav button:hover:not(.active){ color:var(--text); }
+
+  .sos-btn{
+    display:flex; align-items:center; gap:8px;
+    background:var(--accent); color:#1a0508; border:none;
+    font-family:'Space Grotesk'; font-weight:700; font-size:14px;
+    padding:11px 20px; border-radius:11px; cursor:pointer;
+    box-shadow:0 0 0 0 var(--accent-dim);
+    animation:pulse 2.2s infinite;
+  }
+  @keyframes pulse{
+    0%{ box-shadow:0 0 0 0 rgba(255,93,122,0.55); }
+    70%{ box-shadow:0 0 0 14px rgba(255,93,122,0); }
+    100%{ box-shadow:0 0 0 0 rgba(255,93,122,0); }
+  }
+
+  main{ max-width:1200px; margin:0 auto; padding:36px 40px; }
+  section{ display:none; animation:fadeIn .35s ease; }
+  section.active{ display:block; }
+  @keyframes fadeIn{ from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);} }
+
+  .section-head{ margin-bottom:22px; }
+  .eyebrow{ color:var(--accent); font-size:12px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; }
+  .section-head h2{ font-size:28px; margin-top:6px; }
+  .section-head p{ color:var(--text-dim); margin-top:6px; font-size:14.5px; max-width:560px; }
+
+  .panel{
+    background:var(--bg-panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:22px;
+  }
+
+  /* ---------- Dashboard / Map ---------- */
+  .grid-2{ display:grid; grid-template-columns:1.6fr 1fr; gap:20px; }
+  #map{ height:440px; border-radius:12px; overflow:hidden; }
+
+  .zone-list{ display:flex; flex-direction:column; gap:10px; max-height:440px; overflow-y:auto; }
+  .zone-row{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--bg-panel-2); border:1px solid var(--border);
+    padding:12px 14px; border-radius:10px; font-size:14px;
+  }
+  .zone-name{ font-weight:600; }
+  .score-pill{
+    padding:4px 11px; border-radius:100px; font-weight:700; font-size:13px; font-family:'Space Grotesk';
+  }
+  .score-safe{ background:#35d0a322; color:var(--safe); }
+  .score-moderate{ background:#f5b94222; color:var(--moderate); }
+  .score-risk{ background:#ff5d7a22; color:var(--risk); }
+
+  .legend{ display:flex; gap:16px; margin-top:14px; font-size:12.5px; color:var(--text-dim); }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+
+  /* ---------- Report form ---------- */
+  .form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .field{ display:flex; flex-direction:column; gap:7px; }
+  .field.full{ grid-column:1 / -1; }
+  label{ font-size:13px; color:var(--text-dim); font-weight:600; }
+  select, input, textarea{
+    background:var(--bg-panel-2); border:1px solid var(--border); color:var(--text);
+    padding:11px 13px; border-radius:10px; font-family:'Inter'; font-size:14px; outline:none;
+    transition:.2s;
+  }
+  select:focus, input:focus, textarea:focus{ border-color:var(--accent); }
+  textarea{ resize:vertical; min-height:90px; }
+  .submit-btn{
+    background:linear-gradient(135deg, var(--accent), #ff8a9e);
+    color:#1a0508; border:none; font-family:'Space Grotesk'; font-weight:700;
+    padding:13px 22px; border-radius:11px; cursor:pointer; font-size:14.5px;
+    margin-top:4px;
+  }
+  .submit-btn:hover{ filter:brightness(1.08); }
+  .toast{
+    display:none; margin-top:14px; padding:12px 16px; border-radius:10px;
+    background:#35d0a322; color:var(--safe); font-size:14px; font-weight:600;
+    border:1px solid #35d0a355;
+  }
+
+  .recent-list{ margin-top:26px; display:flex; flex-direction:column; gap:10px; }
+  .incident-card{
+    background:var(--bg-panel-2); border:1px solid var(--border); border-radius:10px;
+    padding:14px 16px; font-size:13.5px;
+  }
+  .incident-top{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .sev-tag{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:100px; text-transform:uppercase; letter-spacing:.4px; }
+  .sev-high{ background:#ff5d7a22; color:var(--risk); }
+  .sev-medium{ background:#f5b94222; color:var(--moderate); }
+  .sev-low{ background:#8b7cf622; color:var(--violet); }
+  .incident-meta{ color:var(--text-dim); font-size:12.5px; }
+
+  /* ---------- Analytics ---------- */
+  .stat-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+  .stat-card{ background:var(--bg-panel); border:1px solid var(--border); border-radius:14px; padding:18px; }
+  .stat-num{ font-family:'Space Grotesk'; font-size:30px; font-weight:700; }
+  .stat-label{ color:var(--text-dim); font-size:12.5px; margin-top:4px; }
+  .charts-grid{ display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  canvas{ max-height:280px; }
+
+  /* ---------- Live location ---------- */
+  .live-wrap{ display:grid; grid-template-columns:1.6fr 1fr; gap:20px; }
+  #live-map{ height:420px; border-radius:12px; overflow:hidden; }
+  .share-toggle{
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--bg-panel-2); border:1px solid var(--border); border-radius:12px;
+    padding:16px; margin-bottom:16px;
+  }
+  .toggle-switch{
+    width:48px; height:26px; border-radius:100px; background:#3a3550; position:relative; cursor:pointer; transition:.25s;
+  }
+  .toggle-switch.on{ background:var(--safe); }
+  .toggle-knob{
+    width:20px; height:20px; border-radius:50%; background:#fff; position:absolute; top:3px; left:3px; transition:.25s;
+  }
+  .toggle-switch.on .toggle-knob{ left:25px; }
+  .status-dot{ width:8px; height:8px; border-radius:50%; background:var(--text-dim); display:inline-block; margin-right:7px; }
+  .status-dot.live{ background:var(--safe); box-shadow:0 0 0 0 rgba(53,208,163,.6); animation:pulse2 1.6s infinite; }
+  @keyframes pulse2{ 0%{box-shadow:0 0 0 0 rgba(53,208,163,.5);} 70%{box-shadow:0 0 0 8px rgba(53,208,163,0);} 100%{box-shadow:0 0 0 0 rgba(53,208,163,0);} }
+  .contact-row{ display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--border); font-size:14px; }
+  .contact-row:last-child{ border-bottom:none; }
+  .avatar{ width:32px; height:32px; border-radius:50%; background:linear-gradient(135deg,var(--violet),var(--accent)); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; }
+
+  ::-webkit-scrollbar{ width:8px; }
+  ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:10px; }
+
+  /* ---------- Auth screen ---------- */
+  #auth-screen{
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .auth-card{
+    width:100%; max-width:400px; background:var(--bg-panel);
+    border:1px solid var(--border); border-radius:20px; padding:38px 34px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.4);
+  }
+  .auth-brand{ display:flex; align-items:center; gap:12px; justify-content:center; margin-bottom:26px; }
+  .auth-title{ font-size:22px; font-weight:700; text-align:center; margin-bottom:6px; }
+  .auth-sub{ color:var(--text-dim); font-size:13.5px; text-align:center; margin-bottom:26px; }
+  .auth-tabs{ display:flex; background:var(--bg-panel-2); border-radius:11px; padding:4px; margin-bottom:24px; }
+  .auth-tab{
+    flex:1; text-align:center; padding:9px; border-radius:8px; font-weight:600; font-size:13.5px;
+    color:var(--text-dim); cursor:pointer; transition:.2s;
+  }
+  .auth-tab.active{ background:var(--bg-panel); color:var(--text); }
+  .auth-form{ display:none; flex-direction:column; gap:14px; }
+  .auth-form.active{ display:flex; }
+  .auth-error{
+    display:none; background:#ff5d7a1a; border:1px solid #ff5d7a55; color:var(--risk);
+    padding:10px 13px; border-radius:9px; font-size:13px;
+  }
+  .auth-submit{
+    background:linear-gradient(135deg, var(--accent), #ff8a9e);
+    color:#1a0508; border:none; font-family:'Space Grotesk'; font-weight:700;
+    padding:13px; border-radius:11px; cursor:pointer; font-size:14.5px; margin-top:4px;
+  }
+  .auth-submit:hover{ filter:brightness(1.08); }
+  .auth-hint{ text-align:center; font-size:12.5px; color:var(--text-dim); margin-top:18px; }
+
+  .user-chip{
+    display:flex; align-items:center; gap:9px; background:var(--bg-panel-2);
+    border:1px solid var(--border); padding:7px 8px 7px 8px; border-radius:100px; font-size:13.5px; font-weight:600;
+  }
+  .user-chip .avatar{ width:26px; height:26px; font-size:11px; }
+  .logout-btn{
+    background:transparent; border:none; color:var(--text-dim); cursor:pointer; font-size:15px; padding:0 6px;
+  }
+  .logout-btn:hover{ color:var(--risk); }
+
+  #app-shell{ display:none; }
+
+  @media(max-width:900px){
+    .grid-2, .live-wrap, .charts-grid{ grid-template-columns:1fr; }
+    .stat-grid{ grid-template-columns:1fr 1fr; }
+    header{ flex-wrap:wrap; gap:14px; padding:18px 20px; }
+    main{ padding:24px 20px; }
+    .form-grid{ grid-template-columns:1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===================== AUTH SCREEN ===================== -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="brand-mark">🛡</div>
+      <div>
+        <div class="brand-name">ShesSafe</div>
+        <div class="brand-tag">Women safety analytics</div>
+      </div>
+    </div>
+
+    <div class="auth-tabs">
+      <div class="auth-tab active" data-auth="login">Log in</div>
+      <div class="auth-tab" data-auth="register">Register</div>
+    </div>
+
+    <div class="auth-error" id="auth-error"></div>
+
+    <!-- Login -->
+    <form class="auth-form active" id="login-form">
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="login-username" placeholder="e.g. priya23" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="login-password" placeholder="••••••••" required>
+      </div>
+      <button type="submit" class="auth-submit">Log in</button>
+    </form>
+
+    <!-- Register -->
+    <form class="auth-form" id="register-form">
+      <div class="field">
+        <label>Full name</label>
+        <input type="text" id="register-name" placeholder="e.g. Priya Sharma" required>
+      </div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="register-username" placeholder="e.g. priya23" required>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="register-password" placeholder="At least 4 characters" required>
+      </div>
+      <button type="submit" class="auth-submit">Create account</button>
+    </form>
+
+    <div class="auth-hint">Accounts are stored in memory on the backend for this demo — they reset when the server restarts.</div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app-shell">
+<header>
+  <div class="brand">
+    <div class="brand-mark">🛡</div>
+    <div>
+      <div class="brand-name">ShesSafe</div>
+      <div class="brand-tag">Women safety analytics</div>
+    </div>
+  </div>
+
+  <nav>
+    <button class="nav-btn active" data-tab="map">Safety Map</button>
+    <button class="nav-btn" data-tab="report">Report</button>
+    <button class="nav-btn" data-tab="analytics">Analytics</button>
+    <button class="nav-btn" data-tab="live">Live Location</button>
+  </nav>
+
+  <div style="display:flex; align-items:center; gap:14px;">
+    <div class="user-chip">
+      <div class="avatar" id="user-avatar">–</div>
+      <span id="user-name">–</span>
+      <button class="logout-btn" onclick="logout()" title="Log out">⏻</button>
+    </div>
+    <button class="sos-btn" onclick="triggerSOS()">🚨 SOS</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===================== SAFETY MAP ===================== -->
+  <section id="tab-map" class="active">
+    <div class="section-head">
+      <div class="eyebrow">Live overview</div>
+      <h2>Area Safety Map</h2>
+      <p>Each zone is scored 0–100 based on reported incidents. Tap a marker for details.</p>
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <div id="map"></div>
+        <div class="legend">
+          <span><span class="dot" style="background:var(--safe)"></span>Safe (75+)</span>
+          <span><span class="dot" style="background:var(--moderate)"></span>Moderate (55–74)</span>
+          <span><span class="dot" style="background:var(--risk)"></span>Needs caution (&lt;55)</span>
+        </div>
+      </div>
+      <div class="panel">
+        <h3 style="font-size:15px; margin-bottom:14px;">Zone scores</h3>
+        <div class="zone-list" id="zone-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== REPORT ===================== -->
+  <section id="tab-report">
+    <div class="section-head">
+      <div class="eyebrow">Speak up</div>
+      <h2>Report an Incident</h2>
+      <p>Your report updates the area's safety score in real time and helps others stay aware.</p>
+    </div>
+    <div class="grid-2">
+      <div class="panel">
+        <form id="incident-form">
+          <div class="form-grid">
+            <div class="field">
+              <label>Incident type</label>
+              <select id="f-type">
+                <option>Harassment</option>
+                <option>Stalking</option>
+                <option>Unsafe Lighting</option>
+                <option>Theft</option>
+                <option>Suspicious Activity</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Zone / Area</label>
+              <select id="f-zone"></select>
+            </div>
+            <div class="field">
+              <label>Severity</label>
+              <select id="f-severity">
+                <option>Low</option>
+                <option>Medium</option>
+                <option>High</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>When</label>
+              <input type="text" value="Just now" disabled>
+            </div>
+            <div class="field full">
+              <label>Description</label>
+              <textarea id="f-desc" placeholder="What happened? Include time of day and any details that could help others stay safe."></textarea>
+            </div>
+          </div>
+          <button type="submit" class="submit-btn">Submit report</button>
+          <div class="toast" id="report-toast">✓ Report submitted — thank you for helping keep others safe.</div>
+        </form>
+      </div>
+      <div class="panel">
+        <h3 style="font-size:15px; margin-bottom:6px;">Recent reports</h3>
+        <p style="color:var(--text-dim); font-size:12.5px;">Latest incidents across all zones</p>
+        <div class="recent-list" id="recent-list"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== ANALYTICS ===================== -->
+  <section id="tab-analytics">
+    <div class="section-head">
+      <div class="eyebrow">Insights</div>
+      <h2>Safety Analytics</h2>
+      <p>A quick read on incident trends across tracked zones.</p>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="stat-num" id="s-total">–</div>
+        <div class="stat-label">Total incidents</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" id="s-avg">–</div>
+        <div class="stat-label">Average safety score</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="color:var(--safe)" id="s-safest">–</div>
+        <div class="stat-label">Safest zone</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num" style="color:var(--risk)" id="s-risk">–</div>
+        <div class="stat-label">Needs most attention</div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="panel">
+        <h3 style="font-size:14.5px; margin-bottom:14px;">Incidents by type</h3>
+        <canvas id="chart-type"></canvas>
+      </div>
+      <div class="panel">
+        <h3 style="font-size:14.5px; margin-bottom:14px;">7-day safety score trend</h3>
+        <canvas id="chart-trend"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== LIVE LOCATION ===================== -->
+  <section id="tab-live">
+    <div class="section-head">
+      <div class="eyebrow">Stay connected</div>
+      <h2>Live Location Sharing</h2>
+      <p>Simulated demo — toggle sharing to see your position update on the map in real time.</p>
+    </div>
+    <div class="live-wrap">
+      <div class="panel">
+        <div id="live-map"></div>
+      </div>
+      <div class="panel">
+        <div class="share-toggle">
+          <div>
+            <div style="font-weight:600; font-size:14.5px;"><span class="status-dot" id="status-dot"></span><span id="status-text">Sharing off</span></div>
+            <div style="color:var(--text-dim); font-size:12px; margin-top:2px;">Updates every 2 seconds</div>
+          </div>
+          <div class="toggle-switch" id="share-switch" onclick="toggleShare()"><div class="toggle-knob"></div></div>
+        </div>
+
+        <h3 style="font-size:14px; margin-bottom:6px;">Sharing with</h3>
+        <div class="contact-row"><div class="avatar">M</div> Mom</div>
+        <div class="contact-row"><div class="avatar">R</div> Roommate — Riya</div>
+        <div class="contact-row"><div class="avatar">B</div> Best friend — Anu</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+</div><!-- /#app-shell -->
+
+<script>
+const API = "http://127.0.0.1:5000/api";
+
+/* ---------------- Auth ---------------- */
+const authTabs = document.querySelectorAll(".auth-tab");
+const loginForm = document.getElementById("login-form");
+const registerForm = document.getElementById("register-form");
+const authError = document.getElementById("auth-error");
+
+authTabs.forEach(tab=>{
+  tab.addEventListener("click", ()=>{
+    authTabs.forEach(t=>t.classList.remove("active"));
+    tab.classList.add("active");
+    authError.style.display = "none";
+    if(tab.dataset.auth === "login"){
+      loginForm.classList.add("active"); registerForm.classList.remove("active");
+    } else {
+      registerForm.classList.add("active"); loginForm.classList.remove("active");
+    }
+  });
+});
+
+function showAuthError(msg){
+  authError.textContent = msg;
+  authError.style.display = "block";
+}
+
+function enterApp(user){
+  localStorage.setItem("shesafe_user", JSON.stringify(user));
+  document.getElementById("auth-screen").style.display = "none";
+  document.getElementById("app-shell").style.display = "block";
+  document.getElementById("user-name").textContent = user.name;
+  document.getElementById("user-avatar").textContent = user.name.charAt(0).toUpperCase();
+  initApp();
+}
+
+function logout(){
+  localStorage.removeItem("shesafe_user");
+  document.getElementById("app-shell").style.display = "none";
+  document.getElementById("auth-screen").style.display = "flex";
+  loginForm.reset(); registerForm.reset();
+}
+
+loginForm.addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  authError.style.display = "none";
+  const username = document.getElementById("login-username").value.trim();
+  const password = document.getElementById("login-password").value;
+  try{
+    const res = await fetch(`${API}/login`, {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await res.json();
+    if(!res.ok) return showAuthError(data.error || "Login failed.");
+    enterApp(data);
+  } catch(err){
+    showAuthError("Couldn't reach the backend. Is app.py running on port 5000?");
+  }
+});
+
+registerForm.addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  authError.style.display = "none";
+  const name = document.getElementById("register-name").value.trim();
+  const username = document.getElementById("register-username").value.trim();
+  const password = document.getElementById("register-password").value;
+  try{
+    const res = await fetch(`${API}/register`, {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ name, username, password })
+    });
+    const data = await res.json();
+    if(!res.ok) return showAuthError(data.error || "Registration failed.");
+    enterApp(data);
+  } catch(err){
+    showAuthError("Couldn't reach the backend. Is app.py running on port 5000?");
+  }
+});
+
+/* ---------------- Tab navigation ---------------- */
+document.querySelectorAll(".nav-btn").forEach(btn=>{
+  btn.addEventListener("click", ()=>{
+    document.querySelectorAll(".nav-btn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll("main section").forEach(s=>s.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-"+btn.dataset.tab).classList.add("active");
+    if(btn.dataset.tab === "map" && window.mainMap) setTimeout(()=>mainMap.invalidateSize(),150);
+    if(btn.dataset.tab === "live" && window.liveMap) setTimeout(()=>liveMap.invalidateSize(),150);
+  });
+});
+
+function scoreClass(score){
+  if(score >= 75) return "safe";
+  if(score >= 55) return "moderate";
+  return "risk";
+}
+
+/* ---------------- Safety Map ---------------- */
+let mainMap, zoneMarkers = {};
+
+async function loadZones(){
+  const res = await fetch(`${API}/zones`);
+  const zones = await res.json();
+
+  if(!mainMap){
+    mainMap = L.map('map', { zoomControl:true }).setView([zones[0].lat, zones[0].lng], 12);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap, © CARTO', maxZoom: 19
+    }).addTo(mainMap);
+  }
+
+  const colors = { safe:"#35d0a3", moderate:"#f5b942", risk:"#ff5d7a" };
+  const zoneListEl = document.getElementById("zone-list");
+  zoneListEl.innerHTML = "";
+
+  zones.forEach(z=>{
+    const cls = scoreClass(z.score);
+    if(zoneMarkers[z.id]) mainMap.removeLayer(zoneMarkers[z.id]);
+    const marker = L.circleMarker([z.lat, z.lng], {
+      radius: 12, color: colors[cls], fillColor: colors[cls], fillOpacity:0.55, weight:2
+    }).addTo(mainMap);
+    marker.bindPopup(`<b>${z.name}</b><br>Safety score: ${z.score}/100`);
+    zoneMarkers[z.id] = marker;
+
+    zoneListEl.innerHTML += `
+      <div class="zone-row">
+        <span class="zone-name">${z.name}</span>
+        <span class="score-pill score-${cls}">${z.score}</span>
+      </div>`;
+  });
+
+  return zones;
+}
+
+/* ---------------- Report form ---------------- */
+async function loadZoneOptions(){
+  const res = await fetch(`${API}/zones`);
+  const zones = await res.json();
+  const sel = document.getElementById("f-zone");
+  sel.innerHTML = zones.map(z=>`<option>${z.name}</option>`).join("");
+}
+
+async function loadIncidents(){
+  const res = await fetch(`${API}/incidents`);
+  const incidents = await res.json();
+  const list = document.getElementById("recent-list");
+  list.innerHTML = incidents.slice(0,8).map(inc=>{
+    const sevClass = inc.severity.toLowerCase();
+    const time = new Date(inc.time).toLocaleString([], {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+    return `
+      <div class="incident-card">
+        <div class="incident-top">
+          <strong>${inc.type}</strong>
+          <span class="sev-tag sev-${sevClass}">${inc.severity}</span>
+        </div>
+        <div class="incident-meta">${inc.zone} · ${time}</div>
+        ${inc.description ? `<div style="margin-top:6px;">${inc.description}</div>` : ""}
+      </div>`;
+  }).join("");
+}
+
+document.getElementById("incident-form").addEventListener("submit", async (e)=>{
+  e.preventDefault();
+  const payload = {
+    type: document.getElementById("f-type").value,
+    zone: document.getElementById("f-zone").value,
+    severity: document.getElementById("f-severity").value,
+    description: document.getElementById("f-desc").value,
+  };
+  await fetch(`${API}/incidents`, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(payload)
+  });
+
+  const toast = document.getElementById("report-toast");
+  toast.style.display = "block";
+  setTimeout(()=> toast.style.display = "none", 3500);
+
+  document.getElementById("f-desc").value = "";
+  await loadIncidents();
+  await loadZones();       // refresh scores since a report can lower them
+  await loadAnalytics();   // keep analytics in sync
+});
+
+/* ---------------- Analytics ---------------- */
+let typeChart, trendChart;
+
+async function loadAnalytics(){
+  const res = await fetch(`${API}/analytics`);
+  const data = await res.json();
+
+  document.getElementById("s-total").textContent = data.total_incidents;
+  document.getElementById("s-avg").textContent = data.avg_score;
+  document.getElementById("s-safest").textContent = data.safest_zone;
+  document.getElementById("s-risk").textContent = data.riskiest_zone;
+
+  const typeLabels = Object.keys(data.by_type);
+  const typeValues = Object.values(data.by_type);
+
+  const ctxType = document.getElementById("chart-type");
+  if(typeChart) typeChart.destroy();
+  typeChart = new Chart(ctxType, {
+    type:'bar',
+    data:{ labels:typeLabels, datasets:[{ data:typeValues, backgroundColor:"#ff5d7a", borderRadius:8 }] },
+    options:{
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ color:"#9c97ad", font:{size:11} }, grid:{ display:false } },
+        y:{ ticks:{ color:"#9c97ad" }, grid:{ color:"#2a2636" }, beginAtZero:true }
+      }
+    }
+  });
+
+  const ctxTrend = document.getElementById("chart-trend");
+  if(trendChart) trendChart.destroy();
+  trendChart = new Chart(ctxTrend, {
+    type:'line',
+    data:{
+      labels: data.trend.map(t=>t.day),
+      datasets:[{ data:data.trend.map(t=>t.score), borderColor:"#8b7cf6", backgroundColor:"#8b7cf633", fill:true, tension:.4, pointRadius:3 }]
+    },
+    options:{
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ ticks:{ color:"#9c97ad" }, grid:{ display:false } },
+        y:{ ticks:{ color:"#9c97ad" }, grid:{ color:"#2a2636" } }
+      }
+    }
+  });
+}
+
+/* ---------------- Live location (simulated) ---------------- */
+let liveMap, liveMarker, liveInterval, sharing = false;
+
+function initLiveMap(){
+  liveMap = L.map('live-map').setView([12.9716, 77.5946], 13);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CARTO', maxZoom: 19
+  }).addTo(liveMap);
+  liveMarker = L.circleMarker([12.9716, 77.5946], { radius:9, color:"#35d0a3", fillColor:"#35d0a3", fillOpacity:0.8, weight:2 }).addTo(liveMap);
+}
+
+function toggleShare(){
+  sharing = !sharing;
+  const sw = document.getElementById("share-switch");
+  const dot = document.getElementById("status-dot");
+  const text = document.getElementById("status-text");
+
+  sw.classList.toggle("on", sharing);
+  dot.classList.toggle("live", sharing);
+  text.textContent = sharing ? "Sharing live" : "Sharing off";
+
+  if(sharing){
+    fetch(`${API}/location/reset`, { method:"POST" });
+    liveInterval = setInterval(updateLiveLocation, 2000);
+    updateLiveLocation();
+  } else {
+    clearInterval(liveInterval);
+  }
+}
+
+async function updateLiveLocation(){
+  const res = await fetch(`${API}/location/simulate`);
+  const point = await res.json();
+  liveMarker.setLatLng([point.lat, point.lng]);
+  liveMap.panTo([point.lat, point.lng]);
+}
+
+/* ---------------- SOS ---------------- */
+function triggerSOS(){
+  alert("🚨 SOS triggered!\n\nIn a full version this would instantly alert your emergency contacts with your live location.");
+}
+
+/* ---------------- Init ---------------- */
+async function initApp(){
+  await loadZones();
+  await loadZoneOptions();
+  await loadIncidents();
+  await loadAnalytics();
+  initLiveMap();
+}
+
+// If already logged in (from a previous visit), skip straight to the app
+(function checkSession(){
+  const saved = localStorage.getItem("shesafe_user");
+  if(saved){
+    try{
+      enterApp(JSON.parse(saved));
+    } catch(e){ /* corrupted session data, ignore and show login */ }
+  }
+})();
+</script>
+
+</body>
+</html>
